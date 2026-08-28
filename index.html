@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restock — Inventory Decision Assistant</title>
+<meta name="description" content="Upload an inventory file and get buy quantities, overstock and dead stock exposure, slow movers, and which supplier to call first — with the arithmetic behind every number.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">Restock</span>
+      <span class="brand-sub">Inventory decision assistant</span>
+    </div>
+    <input type="file" id="file-input" accept=".csv,.xlsx,text/csv" class="sr">
+    <button class="btn" id="btn-sample" type="button">Load sample</button>
+    <button class="btn" id="btn-upload" type="button">Upload file</button>
+    <button class="btn btn-ghost" id="btn-settings" type="button" aria-haspopup="dialog">Settings</button>
+    <button class="btn btn-ghost" id="btn-theme" type="button" aria-label="Switch theme">Theme</button>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+
+  <section class="panel empty" id="empty">
+    <h1>Which SKUs to buy, and which to stop buying.</h1>
+    <p class="empty-lede">
+      Upload an inventory export — Excel or CSV — and Restock works out the reorder point, safety
+      stock and economic order quantity for every line, then tells you what to do about it: what to
+      order today, what is drowning in cover, what stopped selling, and which supplier to call first.
+      Every recommendation carries a quantity and a rupee figure.
+    </p>
+    <div class="empty-actions">
+      <button class="btn btn-primary" id="btn-sample-2" type="button">Analyse the sample inventory</button>
+      <button class="btn" id="btn-upload-2" type="button">Upload Excel or CSV</button>
+      <a class="btn" id="btn-download-xlsx" href="data/inventory.xlsx" download>Download the sample as .xlsx</a>
+    </div>
+    <p class="label" style="margin-bottom:.75rem">What it works out</p>
+    <div class="checks">
+      <div><h3>Stockout risk</h3><p>Position against the reorder point, and whether stock runs out before the supplier can deliver.</p></div>
+      <div><h3>Overstock</h3><p>Cover beyond the order-up-to level, priced as working capital you could release.</p></div>
+      <div><h3>Slow movers &amp; dead stock</h3><p>Lines whose demand has collapsed, and lines with no movement at all.</p></div>
+      <div><h3>Demand pattern</h3><p>Average, variability, trend and seasonality across the periods in your file.</p></div>
+      <div><h3>ABC / XYZ</h3><p>Where the value is concentrated, and which lines are too volatile to forecast simply.</p></div>
+      <div><h3>Supplier priority</h3><p>Which supplier to call first, and what to put on the order.</p></div>
+    </div>
+  </section>
+
+  <div id="results" class="hidden">
+
+    <section class="panel kpis" id="kpis" aria-live="polite"></section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Do these first</h2>
+        <p id="action-sub">Ranked by urgency, then by the money on the line.</p>
+        <button class="btn" id="btn-export-actions" type="button">Export action list</button>
+      </div>
+      <div class="actions" id="actions"></div>
+      <div style="margin-top:.6rem">
+        <button class="btn btn-ghost" id="btn-more-actions" type="button">Show all recommendations</button>
+      </div>
+    </section>
+
+    <section class="section charts">
+      <div class="panel chart">
+        <h3>Where the value sits</h3>
+        <p class="chart-sub">Cumulative share of annual value against share of SKUs. The steeper the curve, the more concentrated your spend.</p>
+        <div id="chart-concentration"></div>
+        <p class="chart-readout" id="concentration-readout"></p>
+      </div>
+      <div class="panel chart">
+        <h3>Stock value by status</h3>
+        <p class="chart-sub">How much of the money on the shelf is healthy, and how much is stuck.</p>
+        <div class="statusbars" id="chart-status"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Value class against status</h2>
+        <p>SKU counts. Problems in class A cost far more than the same problem in class C — this is where to look first.</p>
+      </div>
+      <div class="panel chart">
+        <div class="table-scroll"><table class="matrix" id="matrix"></table></div>
+        <div class="legend" id="matrix-legend"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Supplier priority</h2>
+        <p>Who to call first, and what to put on the order.</p>
+      </div>
+      <div class="panel table-scroll">
+        <table class="data" id="suppliers-table">
+          <thead>
+            <tr>
+              <th scope="col">Supplier</th>
+              <th scope="col" class="num">SKUs</th>
+              <th scope="col" class="num">Lines to order</th>
+              <th scope="col" class="num">Order value</th>
+              <th scope="col" class="num">Excess held</th>
+              <th scope="col" class="num">Lead time</th>
+              <th scope="col">Recommendation</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Every SKU</h2>
+        <p>Demand shape, cover, and the policy numbers behind each recommendation.</p>
+        <button class="btn" id="btn-export-skus" type="button">Export CSV</button>
+      </div>
+      <div class="panel">
+        <div class="filters">
+          <label class="sr" for="f-status">Filter by status</label>
+          <select id="f-status"><option value="">All statuses</option></select>
+          <label class="sr" for="f-abc">Filter by class</label>
+          <select id="f-abc">
+            <option value="">All classes</option>
+            <option value="A">Class A</option><option value="B">Class B</option><option value="C">Class C</option>
+          </select>
+          <label class="sr" for="f-supplier">Filter by supplier</label>
+          <select id="f-supplier"><option value="">All suppliers</option></select>
+          <label class="sr" for="f-search">Search</label>
+          <input type="search" id="f-search" placeholder="Search SKU or description">
+          <span class="count" id="sku-count"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="data" id="skus-table">
+            <thead>
+              <tr>
+                <th scope="col">SKU</th>
+                <th scope="col">Description</th>
+                <th scope="col">Status</th>
+                <th scope="col">Class</th>
+                <th scope="col">Demand (12 mo)</th>
+                <th scope="col" class="num">Avg/mo</th>
+                <th scope="col" class="num">On hand</th>
+                <th scope="col" class="num">Cover</th>
+                <th scope="col" class="num">ROP</th>
+                <th scope="col" class="num">Safety</th>
+                <th scope="col" class="num">EOQ</th>
+                <th scope="col">Action</th>
+                <th scope="col" class="num">Qty</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    <span>Restock — inventory decision assistant</span>
+    <span>Built by <a href="https://yousufhasan48017.github.io">Yousuf Hasan</a></span>
+    <span>Runs entirely in your browser — no file leaves your machine</span>
+  </footer>
+</main>
+
+<div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+  <div class="drawer-panel">
+    <div style="display:flex;align-items:center;gap:.75rem">
+      <h2 id="drawer-title" style="margin-right:auto">Settings</h2>
+      <button class="btn btn-ghost" id="btn-close-drawer" type="button">Close</button>
+    </div>
+
+    <p class="label">Planning assumptions</p>
+    <p>These drive safety stock and order quantities. Change them and the whole analysis recalculates.</p>
+
+    <label for="service-level">
+      Target service level
+      <select id="service-level">
+        <option value="0.9">90% — z 1.28</option>
+        <option value="0.95" selected>95% — z 1.64</option>
+        <option value="0.975">97.5% — z 1.96</option>
+        <option value="0.99">99% — z 2.33</option>
+      </select>
+    </label>
+
+    <div class="field-row">
+      <label for="holding-rate">
+        Holding cost (% per year)
+        <input type="number" id="holding-rate" min="1" max="100" step="1" value="22">
+      </label>
+      <label for="order-cost">
+        Cost per purchase order
+        <input type="number" id="order-cost" min="0" step="100" value="2500">
+      </label>
+    </div>
+
+    <label for="overstock-days">
+      Overstock threshold (days of cover)
+      <input type="number" id="overstock-days" min="30" max="720" step="10" value="120">
+    </label>
+
+    <hr style="border:0;border-top:1px solid var(--grid);margin:.25rem 0">
+
+    <p class="label">AI column mapping</p>
+    <p>
+      The maths is deterministic — the same file always gives the same answer. The model has one
+      job: read your column headers and work out which is the SKU, which is on-hand stock, and
+      which columns are demand history. Leave this blank and a built-in mapper does it instead.
+    </p>
+
+    <label for="endpoint">
+      Webhook URL
+      <input type="url" id="endpoint" placeholder="https://your-n8n-instance/webhook/restock" autocomplete="off">
+    </label>
+    <p style="font-size:.75rem;color:var(--muted)">Stored in this browser only.</p>
+
+    <div>
+      <p class="label" style="margin-bottom:.4rem">Request your endpoint receives</p>
+      <pre id="req-shape"></pre>
+    </div>
+    <div>
+      <p class="label" style="margin-bottom:.4rem">Response it must return</p>
+      <pre id="res-shape"></pre>
+    </div>
+
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-save" type="button">Save &amp; recalculate</button>
+      <button class="btn" id="btn-reset" type="button">Reset to defaults</button>
+    </div>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script src="xlsx.js"></script>
+<script src="data/sample.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

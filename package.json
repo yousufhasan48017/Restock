@@ -1,0 +1,23 @@
+{
+  "name": "restock",
+  "version": "1.0.0",
+  "description": "Inventory decision assistant — reads an Excel or CSV inventory export and returns reorder quantities, overstock and dead stock exposure, demand patterns and supplier priorities.",
+  "main": "engine.js",
+  "scripts": {
+    "test": "node test/engine.test.js && node test/xlsx.test.js",
+    "build:sample": "node tools/make-sample.js && node tools/build-sample.js && node tools/make-xlsx.js"
+  },
+  "keywords": [
+    "inventory",
+    "supply-chain",
+    "reorder-point",
+    "safety-stock",
+    "eoq",
+    "abc-analysis",
+    "demand-planning",
+    "xlsx"
+  ],
+  "author": "Yousuf Hasan",
+  "license": "MIT",
+  "private": false
+}
